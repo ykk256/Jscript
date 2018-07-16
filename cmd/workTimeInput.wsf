@@ -1,0 +1,349 @@
+<job id="foo">
+<script language="VBScript">
+ 'InputBoxを出して、ユーザから入力された値を返す関数
+ function vbinput(msg, data)
+    vbinput = InputBox(msg,,data)
+ end function
+</script>
+
+<script language="JavaScript">
+
+var hoge2 = getConfig();
+var hoge = getInput(hoge2);
+
+if (hoge === false) {
+        WScript.Quit (1);
+}
+
+Wscript.echo (getBreakTimeInWork(hoge,hoge2));
+
+// useIe(hoge , hoge2);
+
+
+/* IE操作用のメイン関数 */
+function useIe(inputData , confUser) {
+        // IE起動
+        var ie = WScript.CreateObject('InternetExplorer.Application');
+        var wshShell = WScript.CreateObject("WScript.Shell");
+        var strIEexe = "iexplore.exe" ;
+        var loginHtml = ''; // 利用するURLを記載
+        
+        // ログインまで実施。
+        ieLogin(wshShell,ie, loginHtml, strIEexe , confUser['user']);
+
+        // 業務報告書ボタンをクリック
+        menuFrame = ie.document.getElementById('menu').contentWindow;
+        menuFrame.document.getElementById('workReport').click();
+        
+        // 勤怠を入力
+        waitIE( ie );
+        mainFrame = ie.document.getElementById('main').contentWindow;
+
+        mainFrame.document.getElementById('startHour'+ inputData['date'].substr(6)).value =
+inputData['sTime'];
+        mainFrame.document.getElementById('endHour'+ inputData['date'].substr(6)).value   =
+inputData['eTime'];
+//        ie.document.getElementById('btnCalc2').click();
+//        WScript.Sleep( 500 );
+//        wshShell.SendKeys("{ENTER}");
+
+        // 検索キーワードを入力
+//        ie.document.getElementById('gbqfq').value = 'Twitter';
+//        WScript.Sleep( 100 );
+//         
+        // 検索ボタンをクリック
+//        ie.document.getElementById('workReport').click();
+         
+        waitIE( ie );
+         
+
+        waitIE(ie);
+        // 下記関数の実行でIEを閉じることができる
+        ie.Quit();
+        // 制御を破棄
+        ie = null;
+};
+
+
+/* IEがビジー状態の間待機する関数 */
+function waitIE(ie) {
+        while((ie.Busy) || (ie.readystate != 4)) {
+                WScript.Sleep(100);
+        }
+        WScript.Sleep(1000);
+};
+
+// ログインするツール
+function ieLogin(wshShell,ie, loginHtml, strIEexe , user){
+        // サイトへログイン
+        ie.Navigate(loginHtml);
+        ie.Visible = true;
+
+        WScript.Sleep( 1000 );
+
+        // PIDを取得してIEをアクティブ(前面)にする。
+        var procid = getProcID(strIEexe);
+        wshShell.AppActivate(procid);
+        
+        WScript.Sleep( 1000 );
+        // SSL認証エラーを回避
+        // 「このサイトの閲覧を続行する (推奨されません)。」 を選択
+        if (ie.document.getElementById('overridelink')) {
+                waitIE(ie);
+                ie.document.getElementById('overridelink').click();
+                WScript.Sleep( 1000 );
+        }
+
+        // ユーザ名+パスワードを入力
+        Wscript.echo(user['username']);
+        wshShell.SendKeys(user['username']);
+        WScript.Sleep( 500 );
+        wshShell.SendKeys("{TAB}");
+        WScript.Sleep( 500 );
+        wshShell.SendKeys(user['password']);
+        WScript.Sleep( 500 );
+        wshShell.SendKeys("{ENTER}");
+        
+        WScript.Sleep( 1000 );
+        
+        return ie;
+        
+
+};
+
+/** プロセス名からPIDを取得 */
+function getProcID(ProcessName) {
+        var env = WScript.CreateObject("WScript.Shell").Environment("Process");
+        var windir = env("SystemRoot");
+        var Service = GetObject("WinMgmts:Root\\Cimv2");
+        var QfeSet = Service.ExecQuery("Select * From Win32_Process Where Caption='" +
+ProcessName  +"'");
+        var objItem = new Enumerator(QfeSet);
+        
+        intProcID = 0;
+
+        for (;!objItem.atEnd();objItem.moveNext()) {
+                var item = objItem.item();
+                intProcID = item.ProcessId;
+                break;
+        }
+        
+        return intProcID;
+};
+
+/**
+ * 勤怠時間など可変値を受け取る。
+ * @return {Object} 入力値を格納したオブジェクト
+ * Object[0] : 入力日付(YYYYMMDD)
+ * Object[1] : 出勤時間(hh:mm)
+ * Object[2] : 退勤時間(hh:mm)
+ * Object[3] : 業務内容
+ * ※エラー時はfalseを返却
+ */
+function getInput(config) {
+        // スクリプトの引数を取得する
+        var msg = new Array();
+        msg[0] = "入力日付(YYYYMMDD)";
+        msg[1] = "出勤時間(hh:mm)";
+        msg[2] = "退勤時間(hh:mm)";
+        msg[3] = "業務内容";
+        
+        var argumentsLength = 4;
+        var wshShell = WScript.CreateObject("WScript.Shell");
+        
+        var objArgs = Array();
+        
+
+
+        // 引数が足りない場合は警告を出して終了する。
+        for (var i = 0; i < argumentsLength; i++){
+                if (WScript.Arguments.Count() === argumentsLength && WScript.Arguments.Item(i) !=
+0) {
+                        objArgs[i] = WScript.Arguments.Item(i); // argumentsの値をそのまま利用する。
+                        
+                }else {
+
+                        objArgs[i] = vbinput(msg[i],"");
+                }
+        }
+        
+        
+        //  ボタンの種類
+        var BTN_OK                 = 0;    // [ＯＫ]ボタン
+        var BTN_OK_CANCL           = 1;    // [ＯＫ][キャンセル]ボタン
+        var BTN_STOP_RETRI_DISRGRD = 2;    // [中止][再試行][無視]ボタン
+        var BTN_YES_NO_CANCL       = 3;    // [はい][いいえ][キャンセル]ボタン
+        var BTN_YES_NO             = 4;    // [はい][いいえ]ボタン
+        var BTN_RETRI_CANCL        = 5;    // [再試行][キャンセル]ボタン
+
+        //  アイコンの種類
+        var ICON_STOP              = 16;   // [Stop]アイコン
+        var ICON_QUESTN            = 32;   // [?]アイコン
+        var ICON_EXCLA             = 48;   // [!]アイコン
+        var ICON_I                 = 64;   // [i]アイコン
+
+        //  押されたボタンごとの戻り値
+        var BTNR_OK                =  1;   // [ＯＫ]ボタン押下時
+        var BTNR_CANCL             =  2;   // [キャンセル]ボタン押下時
+        var BTNR_STOP              =  3;   // [中止]ボタン押下時
+        var BTNR_RETRI             =  4;   // [再試行]ボタン押下時
+        var BTNR_DISRGRD           =  5;   // [無視]ボタン押下時
+        var BTNR_YES               =  6;   // [はい]ボタン押下時
+        var BTNR_NO                =  7;   // [いいえ]ボタン押下時
+        var BTNR_NOT               = -1;   // どのボタンも押さなかったとき
+        
+        
+        // 入力内容の確認画面を表示
+        // はい  ：入力の終了
+        // いいえ ⇒ はい　　　：再入力
+        // いいえ ⇒ いいえ　　：プログラム終了
+        // いいえ ⇒ キャンセル：初めに戻る。
+        
+        while (true) {
+                var data = "以下の値にて登録してよろしいですか？\n";
+                for (var i = 0; i < objArgs.length; i++){
+                        if (2 == i) {
+                                // 業務終了時間は作業単位を元に端数を切り捨てる。
+                                objArgs[i] = workTimeTruncation(objArgs[i], config['unitOfWork']);
+                        }
+                        data += msg[i] + ":" + objArgs[i] + "\n";
+                }
+                
+                var rtn = wshShell.Popup( data, 0, "確認", (BTN_YES_NO + ICON_QUESTN) );
+                
+                if (rtn === BTNR_YES) {
+                        break;
+                } else if (rtn === BTNR_NO) {
+                        // 「いいえ」を選択したら、再入力用のループに入る。
+                        var rtn2 = wshShell.Popup( "再入力いたしますか？", 0, "再入力確認", (BTN_YES_NO_CAN
+CL + ICON_QUESTN) );
+                        
+                        if (rtn2 === BTNR_YES) {
+                                // 再入力画面を表示する。
+                                for (var i = 0; i < objArgs.length; i++){
+                                        objArgs[i] = vbinput(msg[i],objArgs[i]);
+                                }
+                        } else if (rtn2 === BTNR_NO) {
+                                return false ; // 処理の終了
+                        } else if (rtn2 === BTNR_CANCL) {
+                                ;        //もう一回確認画面に戻る
+                        }
+                }
+        }
+        // 取得した入力値の返却
+
+        return {"date":objArgs[0],"sTime":objArgs[1],"eTime":objArgs[2],"work":objArgs[3]};
+}
+
+/**
+ * コンフィグファイルを読みとる。
+ * @return {Object} コンフィグファイルをハッシュに格納して返却する。
+ * ※エラー時はfalseを返却
+ */
+function getConfig() {
+        // 実行ファイルの位置を取得
+        var appPath = WScript.ScriptFullName.substr(0, 
+    WScript.ScriptFullName.length - WScript.ScriptName.length);
+        
+        // ファイルを読み取る。
+        var fso = WScript.CreateObject("Scripting.FileSystemObject");
+        var file = fso.OpenTextFile(appPath + "../conf/config.json");
+        var txt = "";
+        
+
+        while (!file.AtEndOfStream) {
+            txt += file.ReadLine();
+        }
+        
+        // JSON形式のファイルを変換し、ハッシュへ格納する。
+        WScript.echo(txt);
+        var obj = eval("(" + txt + ")");
+        
+        // 取得した値を返却する。
+        return obj;
+}
+
+
+/**
+ * コンフィグファイルと入力値から勤務時間の休憩時刻を計測
+ * @param {Object} inputData : 入力された勤怠データハッシュ
+ * @param {Object} breakTime : 休憩時間が「start」、「end」で登録された配列
+ * @return {String} 勤務時間中の休憩時間を返却
+ * ※エラー時はfalseを返却
+ */
+function getBreakTimeInWork(inputData, confUser) {
+
+        // 設定する日付を取得
+        var year = inputData['date'].substr(0,4);
+        var month = inputData['date'].substr(4,2);
+        var day = inputData['date'].substr(6,2);
+
+        // 業務の開始時刻を設定
+        var hour =  inputData['sTime'].split(':')[0];
+        var minutes = inputData['sTime'].split(':')[1];
+        var startWork = new Date(year,month ,month ,hour ,minutes , 0);
+        
+        // 業務の終了時刻を設定
+        hour =  inputData['eTime'].split(':')[0];
+        minutes = inputData['eTime'].split(':')[1];
+        var endWork = new Date(year,month ,month ,hour ,minutes , 0);
+
+        var breakTime = 0;
+        for (var i in confUser['breakTime']) {
+                // 休憩時間の開始時刻を設定
+                hour =   confUser['breakTime'][i]['start'].split(':')[0];
+                minutes = confUser['breakTime'][i]['start'].split(':')[1];
+                var startBreak = new Date(year,month ,month ,hour ,minutes , 0);
+
+                // 休憩時間の終了時刻を設定
+                hour =   confUser['breakTime'][i]['end'].split(':')[0];
+                minutes = confUser['breakTime'][i]['end'].split(':')[1];
+                var endBreak = new Date(year,month ,month ,hour ,minutes , 0);
+
+                if (endWork < startBreak || startWork > endBreak) {
+                        // 休憩時間が業務時間外の場合は次のレンジへ
+                        continue ;
+                }
+                
+                // 休憩時間を計測する。
+                if (endWork >= endBreak) {
+                        breakTime += endBreak.getTime();
+                } else {
+                        breakTime += endWork.getTime();
+                }
+                
+                if (startWork >= startBreak) {
+                        breakTime -= startWork.getTime();
+                } else {
+                        breakTime -= startBreak.getTime();
+                }
+                
+        }
+        
+        // 取得した値を[hh:mm]の形式に変換して返却
+        return( "00" + Math.floor(breakTime/ (1000 * 60 * 60))).slice(-2) +
+                ":" + 
+                ("00" + Math.floor((breakTime % (1000 * 60 * 60)) / 1000 * 60)).slice(-2) ;
+}
+
+/**
+ * 勤務時間の端数(作業単位で割ったあまり)を削る
+ * @param {String} time : 端数を削る時間(hh:mm形式)
+ * @param {String} unitOfWork : 作業単位(hh:mm形式)
+ * @return {String} 端数を切り捨てた値(hh:mm形式)を返却
+ */
+function workTimeTruncation(time, unitOfWork) {
+        var timeMinutes = Number(time.split(':')[0]) * 60  + Number(time.split(':')[1]);
+        var unitOfWorkMinutes = Number(unitOfWork.split(':')[0]) * 60  +
+Number(unitOfWork.split(':')[1]);
+        
+        var returnTime = timeMinutes - (timeMinutes % unitOfWorkMinutes);
+        
+        return ( "00" + Math.floor(returnTime/ (60))).slice(-2) +
+                ":" + 
+                ("00" + Math.floor(returnTime % 60)).slice(-2) ;
+}
+
+
+</script>
+</job>
